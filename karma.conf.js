@@ -1,6 +1,8 @@
 // Karma configuration
 // Generated on Sun Feb 22 2015 20:35:36 GMT+0100 (CET)
 
+'use strict';
+
 module.exports = function(config) {
   config.set({
 
@@ -15,7 +17,10 @@ module.exports = function(config) {
 
     // list of files / patterns to load in the browser
     files: [
-      '"src/**/*Spec.js"'
+        'bower_components/angular/angular.js',
+        'bower_components/angular-mocks/angular-mocks.js',
+        '.tmp/**/*.js',
+        'tests/**/*Spec.js'
     ],
 
 
@@ -33,8 +38,22 @@ module.exports = function(config) {
     // test results reporter to use
     // possible values: 'dots', 'progress'
     // available reporters: https://npmjs.org/browse/keyword/karma-reporter
-    reporters: ['progress'],
+    reporters: ['progress', 'html'],
 
+    // the default configuration 
+    htmlReporter: {
+      outputDir: 'karma_html', // where to put the reports  
+      templatePath: null, // set if you moved jasmine_template.html 
+      focusOnFailures: true, // reports show failures on start 
+      namedFiles: false, // name files instead of creating sub-directories 
+      pageTitle: null, // page title for reports; browser info by default 
+      urlFriendlyName: false // simply replaces spaces with _ for files/dirs 
+      
+      
+      // experimental 
+      // preserveDescribeNesting: false, // folded suites stay folded  
+      // foldAll: false, // reports start folded (only with preserveDescribeNesting) 
+    },
 
     // web server port
     port: 9876,
@@ -55,7 +74,7 @@ module.exports = function(config) {
 
     // start these browsers
     // available browser launchers: https://npmjs.org/browse/keyword/karma-launcher
-    browsers: ['Chrome', 'Firefox', 'PhantomJS'],
+    browsers: ['PhantomJS'], // 'Chrome', 'Firefox', 
 
 
     // Continuous Integration mode
