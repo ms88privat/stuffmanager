@@ -139,6 +139,7 @@
 						}
 					}
 
+					// todo: should data be an object or array, or can it be a string too?
 					add({key, data}) {
 
 						var presentData = Facility.prototype.get.call(this, {key: key});
@@ -185,6 +186,7 @@
 								var saved = Facility.prototype.save.call(this, {key: key, data: presentData});
 								return saved;
 							} else {
+								console.warn('removeById(): no match found -> no data removedById', id);
 								return presentData;
 							}
 							
@@ -248,7 +250,7 @@
 
 						// no CASE matched
 						if(!passed) {
-							throw 'update() was not possible - there is no use case for it with the given and fetched data';
+							throw 'update() was not possible - maybe there is no use case for it with the given and fetched data - re save() instead?';
 						}
 
 						// save to cache is duplicate because the cache was mutated already? only save to store?
@@ -277,6 +279,10 @@
 						key = this.name + key;
 						return angular.fromJson(localStorage.getItem(key));
 					}
+
+					// loopKeys() {
+
+					// }
 
 					
 					// key array nötig oder nur key?
