@@ -25,6 +25,7 @@
 		.provider('facilityManager', function() {
 
 			var instances = [];
+			var instancesNames = []; // every instance should have a unique name (so string-based-storage does not mess up)
 			var appPrefix = 'myApp';
 
 			this.appPrefix = function(prefix) {
@@ -40,18 +41,34 @@
 			     * @description FacilityInstance
 			     */
 				class Facility {
-					constructor(name = 'defaultName', {cache = true, store = false, resource = false, domains = []} = {}) {
+					constructor(name, {cache = true, store = false, resource = false, domains = [], primId = 'id'} = {}) {
+
+
+						// every instance need a string-based name
+						if(!(typeof name === 'string' || name instanceof String )) {
+							throw 'facilityManager Instance: No "name" specified';
+						}
+
+						// every name should be unique
+						if(_.indexOf(instancesNames, name) !== -1) {
+							throw 'facilityManager Instance: Duplicate Name - Every instance should have a unique name';
+						}
+						instancesNames.push(name);
+
+
 						this.name = appPrefix + name;
 						this.cache = cache;
 						this.store = store;
 						this.resource = resource;
 						this.domains = domains;
+						this.primId = primId; // is treatet like it is always an Integer!
 
+						// predefined domains (resource = promise based data)
 						if(this.resource) {
-							this.domains.push('resource');
+							this.domains.push('RESOURCE');
 						}
 						else {
-							this.domains.push('facility');
+							this.domains.push('FACILITY');
 						}
 
 						this.cached = {};
@@ -65,12 +82,8 @@
 
 					save({key, data} = {}){
 
-						// no cache = no save
 						if(!this.cache) return;
 
-						// the argumented key should always be an addition to the instance and not be the key itself
-						key = this.name + key; 
-						
 						if(this.store) {
 							this.saveToStorage(key, data);
 						}
@@ -80,9 +93,17 @@
 
 					}
 
+					/**
+	                 * @ngdoc method
+	                 * @name get
+	                 * @description get data by id
+	                 * @methodOf FacilityInstance
+	                 * @param {Object} args Specify all arguments needed
+	                 * @param {Number} args.id Has to be an integer
+	                 * @param {Number | String} args.key Get data from a specific key
+	                 * @returns {Object | Array} of data
+	                 */
 					get({id, key} = {}) {
-
-						key = this.name + key;
 
 						var data = this.getFromCache(key);
 
@@ -96,10 +117,10 @@
 						}
 
 
-						// if(id && data) {
-						// 	id = parseInt(id);
-						// 	data = this.getById(data, id);
-						// }
+						if(id && data) {
+							id = parseInt(id);
+							data = this.getById(id, data);
+						}
 
 						// if(promise) {
 						// 	return $q.when(data);
@@ -109,25 +130,156 @@
 						
 					}
 
-					getFromStore(key) {
-						return angular.fromJson(localStorage.getItem(key));
+
+					getById(id, data) {
+						if (data instanceof Array) {
+							var matrix = {};
+							matrix[this.primId] = id;
+							return _.find(data, matrix);
+						}
 					}
 
-					saveToStorage(key, data) {
-						return localStorage.setItem(key, angular.toJson(data));
+					add({key, data}) {
+
+						var presentData = Facility.prototype.get.call(this, {key: key});
+
+						if(presentData) {
+
+							if(!_.isArray(presentData)) {
+								throw 'add() failed: presentData is not an array';
+							}
+
+							presentData = presentData.concat(data); // concat because data could be an array too
+							// _.uniq(presentData, this.primId);
+						}
+						else {
+							presentData = [];
+							presentData = presentData.concat(data);
+						}
+
+						// save changes and return
+						return Facility.prototype.save.call(this, {key: key, data: presentData});
+
 					}
 
-					getFromCache(key) {
-						return this.cached[key];
+					removeById({id, key}) {
+
+						if(!id) {
+							throw 'removeById() has no id specified';
+						}
+
+						var presentData = Facility.prototype.get.call(this, {key: key});
+
+						if(presentData) { // instanceofAry? singleModel unterstüzung?
+
+							if(!_.isArray(presentData)) throw 'removeById() failed: presentData is not an array';
+
+							id = parseInt(id);
+
+							var removed = _.remove(presentData, (model) => {
+								if(model[this.primId] === id) return true;
+							});
+
+							// save changes only if there was a change
+							if(removed) {
+								var saved = Facility.prototype.save.call(this, {key: key, data: presentData});
+								return saved;
+							} else {
+								return presentData;
+							}
+							
+						}
+
+					}
+
+					update({key, data}) {
+						// limitTo three cases:
+						// 1. data = object with id, presentData = collection with id's (standard case)
+						// 2. data = object, presentData = object (if 'id' does not matter)
+						// 3. data = collection with id's (isList), presentData = collection with id's
+
+						// throwErr is:
+						// 1. no case passed
+						var presentData = Facility.prototype.get.call(this, {key: key});
+						var passed = false;	
+					
+						// CASE 1
+						if(data.hasOwnProperty(this.primId) && _.isArray(presentData) ) {
+							// console.log('CASE 1');
+							passed = true;
+							// find possible match
+							var match = this.getById(data[this.primId], presentData);
+							// assign the new data to the match
+							if(match) {
+								_.assign(match, data);
+							}
+							else {
+								console.warn('update() CASE 1: no match found -> no data updated or added! not found:', data);
+							}
+						}
+
+						// CASE 2
+						if(_.isPlainObject(data) && _.isPlainObject(presentData)) { // cut playObject(data), its testet in the beginning
+							// console.log('CASE 2');
+							passed = true;
+							// todo: console.warn if id's are not matching??
+							// assign the new data to the presentData
+							_.assign(presentData, data);
+						}
+
+						// CASE 3
+						if(_.isArray(data) && _.isArray(presentData)) {
+							// console.log('CASE 3');
+							passed = true;
+							var matrix = {};
+
+							// find all matches, update every match
+							_.forEach(data, (model) => {
+								matrix[this.primId] = model[this.primId];
+								var match = _.find(presentData, matrix);
+								if(match) {
+									_.assign(match, model);
+								}
+								else {
+									console.warn('update() CASE 3: no match found -> data NOT updated or added! not found:', model);
+								}
+							});
+						}
+
+						// no CASE matched
+						if(!passed) {
+							throw 'update() was not possible - there is no use case for it with the given and fetched data';
+						}
+
+						// save to cache is duplicate because the cache was mutated already? only save to store?
+						return Facility.prototype.save.call(this, {key: key, data: presentData});
+
 					}
 
 					saveToCache(key, data) {
-
+						// extend the key to the specfic instance
+						key = this.name + key;
 						this.cached[key] = data;
 						return this.cached[key];
 					}
 
+					saveToStorage(key, data) {
+						key = this.name + key;
+						return localStorage.setItem(key, angular.toJson(data));
+					}
 
+					getFromCache(key) {
+						key = this.name + key;
+						return this.cached[key];
+					}
+
+					getFromStore(key) {
+						key = this.name + key;
+						return angular.fromJson(localStorage.getItem(key));
+					}
+
+					
+					// key array nötig oder nur key?
 					clear({keys = [], cache = true, storage = true} = {}) {
 
 						if(keys.length === 0) {
@@ -144,10 +296,10 @@
 
 						else {
 
-							_.forEach(keys, key => {
+							_.forEach(keys, (key) => {
 
 								if(cache) {
-									this.cached[key] = {};
+									delete this.cached[this.name + key];
 								}
 
 								if (storage) {
@@ -159,19 +311,12 @@
 
 					}
 
-					/**
-	                 * @ngdoc method
-	                 * @name get
-	                 * @description get data by id
-	                 * @methodOf FacilityInstance
-	                 * @param {Number} id must be an integer
-	                 * @returns {Object | Array} of data
-	                 */
+					
 
-					static clearAll({domains = [], cache = true, storage = true} = {}) {
+					static clear({domains = [], cache = true, storage = true} = {}) {
 						// cache
 						if(domains.length === 0) {
-							_.forEach(instances, instance => {
+							_.forEach(instances, (instance) => {
 								instance.clear({
 									cache: cache,
 									storage: storage
@@ -180,9 +325,9 @@
 						}
 
 						else {
-							_.forEach(instances, instance => {
+							_.forEach(instances, (instance) => {
 								// only clear if there is minimum one domain match
-								if(_.intersection(domains, instance.domains)) {
+								if(_.intersection(domains, instance.domains).length > 0) {
 									instance.clear({
 										cache: cache,
 										storage: storage
@@ -214,7 +359,8 @@
 	                 */
 					class: function() {
 						return Facility;
-					}
+					},
+					clear: Facility.clear
 				};
 			};
 			
