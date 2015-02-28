@@ -7,8 +7,19 @@
 			if (key.substring(0,myLength) == startsWith) {
 				localStorage.removeItem(key); 
 			} 
+			
 		}); 
 	}
+
+	function timeDiff(timeOne, timeTwo) {
+		if (timeOne === 'now') {timeOne = new Date().getTime();}
+		if (timeOne < timeTwo) {
+			timeOne.setDate(timeOne.getDate() + 1);
+		}
+		var diff = timeOne - timeTwo;
+		return diff;
+	}
+
 
 	 /**
      * @ngdoc overview
@@ -31,7 +42,7 @@
 			this.appPrefix = function(prefix) {
 				appPrefix = prefix;
 			};
-
+			
 
 			this.$get = function($q) {
 
@@ -41,8 +52,13 @@
 			     * @description FacilityInstance
 			     */
 				class Facility {
-					constructor(name, {cache = true, store = false, resource = false, domains = [], primId = 'id'} = {}) {
-
+					constructor(name, {
+						cache = true, 
+						store = false, 
+						resource = false, 
+						primId = 'id',
+						domains = []
+					} = {}) {
 
 						// every instance need a string-based name
 						if(!(typeof name === 'string' || name instanceof String )) {
@@ -140,7 +156,7 @@
 					}
 
 					// todo: should data be an object or array, or can it be a string too?
-					add({key, data}) {
+					add({key, data} = {}) {
 
 						var presentData = Facility.prototype.get.call(this, {key: key});
 
@@ -163,7 +179,7 @@
 
 					}
 
-					removeById({id, key}) {
+					removeById({id, key} = {}) {
 
 						if(!id) {
 							throw 'removeById() has no id specified';
@@ -194,7 +210,7 @@
 
 					}
 
-					update({key, data}) {
+					update({key, data} = {}) {
 						// limitTo three cases:
 						// 1. data = object with id, presentData = collection with id's (standard case)
 						// 2. data = object, presentData = object (if 'id' does not matter)
@@ -366,11 +382,332 @@
 					class: function() {
 						return Facility;
 					},
+					classX: Facility,
 					clear: Facility.clear
 				};
 			};
 			
 			
+		})
+		.provider('resourceManager', function() {
+
+			var THROTTLE_TIME = 5000;
+
+			this.THROTTLE_TIME = function(ms) {
+				THROTTLE_TIME = ms;
+			};
+
+
+			this.$get = function($q, $rootScope, $http, facilityManager) { 
+
+				var TRANSFORM = function(data, header, x,y) {
+					console.log('data, header', data, header(), x,y);
+
+					if (_.has(header, 'status')) { // hf special
+						$rootScope.$broadcast('STUFFMANAGER:SERVER_TRANSFER_HAPPENED', header().date);
+					}
+					
+					return data;
+				};
+
+				var ERROR_HANDLER = function(name, error) {
+					console.warn('errorHandler', name, error);
+					$rootScope.$broadcast('STUFFMANAGER:HTTP_ERROR', name, error);
+				};
+	
+
+				function httpRequest(method, url, params, data) {
+					var config = {
+						method: method,
+						url: url,
+						params: params,
+						data: data,
+						transformResponse: [TRANSFORM].concat($http.defaults.transformResponse)
+					};
+
+					return httpProxy(config);
+
+				}
+
+
+				class Resource extends facilityManager.class() {
+					constructor(name, {
+						cache = true, 
+						store = false, 
+						primId = 'id',
+						domains = [],
+						parse = false,
+						throttleTime = THROTTLE_TIME,
+						errorHandler = ERROR_HANDLER,
+						url
+					} = {}) {
+
+						if(!(typeof url === 'string' || url instanceof String )) {
+							throw 'resourceManager Instance: No "url" specified';
+						}
+
+						this.url = url;
+						this.parse = parse;
+						this.throttleTime = throttleTime;
+						this.errorHandler = errorHandler;
+
+						super(name, {
+							cache: cache, 
+							store: store, 
+							resource: true, // Resource!
+							primId: primId,
+							domains: domains
+						});
+
+						// this assoiative array is holding all of the last requests promises
+						this.request = {}; 
+						this.requestTime = {};
+					}
+
+					throwErr({throwErr = {}} = {}) {
+						var defaultArgs = {
+							timeout: 3000, // 3 sec
+							code: 404,
+						};
+						_.defaults(throwErr, defaultArgs);
+
+						var error = {};
+						error.status = throwErr.code;
+						return $timeout(()=> {
+							if (this.errorHandler) {this.errorHandler(this.name, error);}
+							return $q.reject('Error ' + name);
+						}, throwErr.timeout);
+					}
+
+					fetch({
+						url = this.url, 
+						params = {},
+						key, 
+						reload = false, 
+
+						} = {}) {
+
+						if (!reload) {
+							var data = super.get({key: key, id: params.id}); // get id???
+							
+						}
+
+						if (data) {
+							return $q.when(data);
+						}
+
+						else {
+
+							var requestIdf = angular.toJson(url) + angular.toJson(params); // unqiue identifyer
+							var diff = timeDiff('now', this.requestTime[requestIdf]);
+
+							var saveHandler = (resp) => {
+								super.save({data: resp, key: key});
+								return resp;
+							};
+
+							if (!diff || diff > this.throttleTime) {
+								// new request
+								console.log('get() ', this.name);
+								this.requestTime[requestIdf] = new Date().getTime();
+								this.request[requestIdf] = httpRequest('GET', url, params)
+
+									
+									.then((resp)=>{return this.parseResponse(resp);})
+									.then(saveHandler)
+									.catch((err)=>{return this.errorResponse(err);})
+									;
+							}
+
+							// if throttle it will return the value from last time
+							return this.request[requestIdf]; 
+						}
+
+						
+
+					}
+
+					create({
+						params = {}, 
+						data, 
+						url = this.url, 
+						key
+						} = {}) {
+					
+						if (data.hasOwnProperty(this.primId)) { 
+							console.warn('CREATE() data has a id already?');
+						}
+
+						var addHandler = (resp) => {
+							super.add({data: resp, key: key}); // evtl. inital data muaten um changes zu übernehmen??
+							return resp;
+						};
+
+						// CREATE
+						return httpRequest('POST', url, params, data)
+							.then((resp)=>{return this.parseResponse(resp);})
+							.then(addHandler)
+							.catch((err)=>{return this.errorResponse(err);});
+					}
+
+					put({
+						params = {}, 
+						data, 
+						url = this.url, 
+						key
+						} = {}) {
+
+						var updateHandler =function(resp) {
+							super.update({data: resp, key: key}); 
+							return resp;
+						};
+
+						return httpRequest('PUT', url, params, data)
+							.then((resp)=>{return this.parseResponse(resp);})
+							.then(updateHandler)
+							.catch((err)=>{return this.errorResponse(err);});
+						
+
+
+					}
+
+					// delte has no parse response until now
+					delete({url = this.url, params, key} = {}) {
+
+						var id = _.pick(params, 'id').id; // copy id
+
+						var removeHandler = (resp) => {
+							// we can not use params.id, because params.id got deleted by url interpolation process
+							return super.removeById({key: key, id: id});
+						};
+
+						return httpRequest('DELETE', url, params)
+							.then(removeHandler)
+							.catch((err)=>{return this.errorResponse(err);});
+					}
+
+
+					parseResponse(resp) {
+						resp = resp.data;
+						console.log('parse:', resp);
+						if (typeof this.parse === 'string') {
+							resp = resp[this.parse];
+						} else if (angular.isFunction(this.parse) === true) {
+							resp = this.parse(resp);
+						} 
+						return resp;
+					}
+
+					errorResponse(err) {
+						if (this.errorHandler) {this.errorHandler(this.name, err);}
+						return $q.reject(err);
+					}
+
+				}
+
+
+
+
+				return {
+					class: function() {
+						return Resource;
+					},
+					create: function(name, args) {
+						return new Resource(name, args);
+					},
+					TRANSFORM: TRANSFORM,
+					ERROR_HANDLER: ERROR_HANDLER
+				};
+
+
+
+				// I proxy the $http service and merge the params and data values into
+				// the URL before creating the underlying request.
+				function httpProxy( config ) {
+
+					config.url = interpolateUrl( config.url, config.params, config.data );
+
+					return( $http( config ) );
+
+				}
+
+				// I move values from the params and data arguments into the URL where
+				// there is a match for labels. When the match occurs, the key-value
+				// pairs are removed from the parent object and merged into the string
+				// value of the URL.
+				function interpolateUrl( url, params, data ) {
+
+					// Make sure we have an object to work with - makes the rest of the
+					// logic easier.
+					params = ( params || {} );
+					data = ( data || {} );
+
+					// Strip out the delimiter fluff that is only there for readability
+					// of the optional label paths.
+					url = url.replace( /(\(\s*|\s*\)|\s*\|\s*)/g, "" );
+
+					// Replace each label in the URL (ex, :userID).
+					url = url.replace(
+						/:([a-z]\w*)/gi,
+						function( $0, label ) {
+
+							// NOTE: Giving "data" precedence over "params".
+							return( popFirstKey( data, params, label ) || "" );
+
+						}
+					);
+
+					// Strip out any repeating slashes (but NOT the http:// version).
+					url = url.replace( /(^|[^:])[\/]{2,}/g, "$1/" );
+
+					// Strip out any trailing slash.
+					url = url.replace( /\/+$/i, "" );
+
+					return( url );
+
+				}
+
+				// I take 1..N objects and a key and perform a popKey() action on the
+				// first object that contains the given key. If other objects in the list
+				// also have the key, they are ignored.
+				function popFirstKey( object1, object2, objectN, key ) {
+
+					// Convert the arguments list into a true array so we can easily
+					// pluck values from either end.
+					var objects = Array.prototype.slice.call( arguments );
+
+					// The key will always be the last item in the argument collection.
+					var key = objects.pop();
+
+					var object = null;
+
+					// Iterate over the arguments, looking for the first object that
+					// contains a reference to the given key.
+					while ( object = objects.shift() ) {
+
+						if ( object.hasOwnProperty( key ) ) {
+
+							return( popKey( object, key ) );
+
+						}
+
+					}
+
+				}
+
+
+				// I delete the key from the given object and return the value.
+				function popKey( object, key ) {
+
+					var value = object[ key ];
+
+					delete( object[ key ] );
+
+					return( value );
+
+				}
+
+			};
 		})
 		;
 
