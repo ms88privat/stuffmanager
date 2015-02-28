@@ -62,7 +62,7 @@ gulp.task('minify', [], function() {
 		.pipe($.ngAnnotate())
 		.pipe($.uglify())
 		.pipe($.rename('stuffmanager.min.js'))
-    	.pipe(gulp.dest('dist/'));
+    	.pipe(gulp.dest('./'));
 });
 
 /* =============================================================================== */
