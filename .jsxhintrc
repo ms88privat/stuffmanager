@@ -1,0 +1,22 @@
+{
+	"esnext": true,
+    "globals": {
+        "angular": false,
+        // Angular Mocks
+        "inject": false,
+        "module": false,
+        // JASMINE
+        "describe": false,
+        "it": false,
+        "before": false,
+        "beforeEach": false,
+        "after": false,
+        "afterEach": false,
+        "expect": false,
+        "spyOn": false,
+        // gulp
+        "require": false,
+        "__dirname": false
+
+    }
+}
