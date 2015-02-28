@@ -379,10 +379,10 @@
 	                 * @returns {CLASS} Returns the Facility Class for extending purposes 
 	                 * (e.g. Resource (within resourceManager) extends Facility.class)
 	                 */
-					class: function() {
-						return Facility;
-					},
-					classX: Facility,
+					// class: function() {
+					// 	return Facility;
+					// },
+					class: Facility,
 					clear: Facility.clear
 				};
 			};
@@ -401,7 +401,7 @@
 			this.$get = function($q, $rootScope, $http, facilityManager) { 
 
 				var TRANSFORM = function(data, header, x,y) {
-					console.log('data, header', data, header(), x,y);
+					// console.log('data, header', data, header(), x,y);
 
 					if (_.has(header, 'status')) { // hf special
 						$rootScope.$broadcast('STUFFMANAGER:SERVER_TRANSFER_HAPPENED', header().date);
@@ -430,7 +430,7 @@
 				}
 
 
-				class Resource extends facilityManager.class() {
+				class Resource extends facilityManager.class {
 					constructor(name, {
 						cache = true, 
 						store = false, 
@@ -609,17 +609,25 @@
 
 
 				return {
-					class: function() {
-						return Resource;
-					},
+					// class: function() {
+					// 	return Resource;
+					// },
 					create: function(name, args) {
 						return new Resource(name, args);
 					},
+					class: Resource,
+					clear: facilityManager.class.clear,
 					TRANSFORM: TRANSFORM,
 					ERROR_HANDLER: ERROR_HANDLER
 				};
 
 
+				/* =============================================================================== */
+				/* 
+				copied from https://github.com/bennadel/httpi
+				Thank you!  
+				*/
+				/* =============================================================================== */
 
 				// I proxy the $http service and merge the params and data values into
 				// the URL before creating the underlying request.

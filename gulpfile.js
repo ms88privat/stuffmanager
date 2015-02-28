@@ -11,6 +11,8 @@ gulp.task('watch', ['scripts', 'test', 'doc'], function() {
 	gulp.watch('docs/index.html', ['html']);
 });
 
+gulp.task('build', ['scripts', 'test', 'doc', 'minify']);
+
 gulp.task('default', ['connect', 'watch']);
 
 
@@ -55,6 +57,13 @@ gulp.task('scripts', [], function() {
 		;
 });
 
+gulp.task('minify', [], function() {
+	return gulp.src('.tmp/babel/stuffmanager.js')
+		.pipe($.ngAnnotate())
+		.pipe($.uglify())
+		.pipe($.rename('stuffmanager.min.js'))
+    	.pipe(gulp.dest('dist/'));
+});
 
 /* =============================================================================== */
 /* 

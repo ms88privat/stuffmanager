@@ -525,6 +525,11 @@ describe('Stuffmanager', function() {
                             expect(afterGet).not.toEqual(copy);
                             expect(afterGet).toEqual(ary1); // ary1 should be muated
                             expect(afterGet[0].name).toEqual('createName');
+
+                            resourceManager.clear();
+
+                            var afterClear = instance.get();
+                            expect(afterClear).toBeUndefined();
                         },
                         error: function(err) {
 
