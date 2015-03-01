@@ -100,7 +100,7 @@
 
 						if(!this.cache) return;
 
-						if(this.store) {
+						if(this.store && data) {
 							this.saveToStorage(key, data);
 						}
 
@@ -167,7 +167,7 @@
 							}
 
 							presentData = presentData.concat(data); // concat because data could be an array too
-							// _.uniq(presentData, this.primId);
+							_.uniq(presentData, this.primId); // sometimes the server response with a duplicate
 						}
 						else {
 							presentData = [];
@@ -219,6 +219,11 @@
 						// throwErr is:
 						// 1. no case passed
 						var presentData = Facility.prototype.get.call(this, {key: key});
+
+						if(!presentData) {
+							return Facility.prototype.add.call(this, {key: key, data: data});
+						}
+
 						var passed = false;	
 					
 						// CASE 1
@@ -232,7 +237,9 @@
 								_.assign(match, data);
 							}
 							else {
-								console.warn('update() CASE 1: no match found -> no data updated or added! not found:', data);
+								console.warn('update() CASE 1: no match found -> data added', data);
+								return Facility.prototype.add.call(this, {key: key, data: data});
+								
 							}
 						}
 
@@ -259,7 +266,8 @@
 									_.assign(match, model);
 								}
 								else {
-									console.warn('update() CASE 3: no match found -> data NOT updated or added! not found:', model);
+									console.warn('update() CASE 3: no match found -> -> data added', model);
+									Facility.prototype.add.call(this, {key: key, data: model});
 								}
 							});
 						}
@@ -276,23 +284,23 @@
 
 					saveToCache(key, data) {
 						// extend the key to the specfic instance
-						key = this.name + key;
+						key = key ? this.name + key : this.name;
 						this.cached[key] = data;
 						return this.cached[key];
 					}
 
 					saveToStorage(key, data) {
-						key = this.name + key;
+						key = key ? this.name + key : this.name;
 						return localStorage.setItem(key, angular.toJson(data));
 					}
 
 					getFromCache(key) {
-						key = this.name + key;
+						key = key ? this.name + key : this.name;
 						return this.cached[key];
 					}
 
 					getFromStore(key) {
-						key = this.name + key;
+						key = key ? this.name + key : this.name;
 						return angular.fromJson(localStorage.getItem(key));
 					}
 
@@ -302,7 +310,17 @@
 
 					
 					// key array nötig oder nur key?
-					clear({keys = [], cache = true, storage = true} = {}) {
+					clear({key, keys = [], cache = true, storage = true} = {}) {
+
+						if(key) {
+							if(cache) {
+								delete this.cached[this.name + key];
+							}
+
+							if (storage) {
+								clearSomeLocalStorage(this.name + key);
+							}
+						}
 
 						if(keys.length === 0) {
 
@@ -398,22 +416,16 @@
 			};
 
 
-			this.$get = function($q, $rootScope, $http, facilityManager) { 
+			this.$get = function($q, $rootScope, $http, $timeout, facilityManager) { 
 
-				var TRANSFORM = function(data, header, x,y) {
-					// console.log('data, header', data, header(), x,y);
-
-					if (_.has(header, 'status')) { // hf special
-						$rootScope.$broadcast('STUFFMANAGER:SERVER_TRANSFER_HAPPENED', header().date);
-					}
-					
+				function TRANSFORM(data, header, status) {
 					return data;
-				};
+				}
 
-				var ERROR_HANDLER = function(name, error) {
+				function ERROR_HANDLER(name, error) {
 					console.warn('errorHandler', name, error);
 					$rootScope.$broadcast('STUFFMANAGER:HTTP_ERROR', name, error);
-				};
+				}
 	
 
 				function httpRequest(method, url, params, data) {
@@ -422,7 +434,7 @@
 						url: url,
 						params: params,
 						data: data,
-						transformResponse: [TRANSFORM].concat($http.defaults.transformResponse)
+						transformResponse: [service.TRANSFORM].concat($http.defaults.transformResponse)
 					};
 
 					return httpProxy(config);
@@ -438,7 +450,7 @@
 						domains = [],
 						parse = false,
 						throttleTime = THROTTLE_TIME,
-						errorHandler = ERROR_HANDLER,
+						errorHandler = service.ERROR_HANDLER,
 						url
 					} = {}) {
 
@@ -460,8 +472,8 @@
 						});
 
 						// this assoiative array is holding all of the last requests promises
-						this.request = {}; 
-						this.requestTime = {};
+						this.requests = {}; 
+						this.requestTimes = {};
 					}
 
 					throwErr({throwErr = {}} = {}) {
@@ -499,7 +511,7 @@
 						else {
 
 							var requestIdf = angular.toJson(url) + angular.toJson(params); // unqiue identifyer
-							var diff = timeDiff('now', this.requestTime[requestIdf]);
+							var diff = timeDiff('now', this.requestTimes[requestIdf]);
 
 							var saveHandler = (resp) => {
 								super.save({data: resp, key: key});
@@ -509,18 +521,23 @@
 							if (!diff || diff > this.throttleTime) {
 								// new request
 								console.log('get() ', this.name);
-								this.requestTime[requestIdf] = new Date().getTime();
-								this.request[requestIdf] = httpRequest('GET', url, params)
+								this.requestTimes[requestIdf] = new Date().getTime();
+								this.requests[requestIdf] = httpRequest('GET', url, params)
 
 									
 									.then((resp)=>{return this.parseResponse(resp);})
 									.then(saveHandler)
 									.catch((err)=>{return this.errorResponse(err);})
 									;
+
+							} 
+
+							else {
+								console.log('throttle', this.name);
 							}
 
 							// if throttle it will return the value from last time
-							return this.request[requestIdf]; 
+							return this.requests[requestIdf]; 
 						}
 
 						
@@ -572,9 +589,9 @@
 					}
 
 					// delte has no parse response until now
-					delete({url = this.url, params, key} = {}) {
+					delete({url = this.url, params, key, id} = {}) {
 
-						var id = _.pick(params, 'id').id; // copy id
+						var id = _.pick(params, 'id').id || id; // copy id
 
 						var removeHandler = (resp) => {
 							// we can not use params.id, because params.id got deleted by url interpolation process
@@ -589,7 +606,6 @@
 
 					parseResponse(resp) {
 						resp = resp.data;
-						console.log('parse:', resp);
 						if (typeof this.parse === 'string') {
 							resp = resp[this.parse];
 						} else if (angular.isFunction(this.parse) === true) {
@@ -606,12 +622,7 @@
 				}
 
 
-
-
-				return {
-					// class: function() {
-					// 	return Resource;
-					// },
+				var service = {
 					create: function(name, args) {
 						return new Resource(name, args);
 					},
@@ -619,7 +630,9 @@
 					clear: facilityManager.class.clear,
 					TRANSFORM: TRANSFORM,
 					ERROR_HANDLER: ERROR_HANDLER
-				};
+				}
+
+				return service;
 
 
 				/* =============================================================================== */
@@ -660,7 +673,7 @@
 						function( $0, label ) {
 
 							// NOTE: Giving "data" precedence over "params".
-							return( popFirstKey( data, params, label ) || "" );
+							return( popFirstKey( data, params, label ) || "");
 
 						}
 					);
@@ -678,6 +691,8 @@
 				// I take 1..N objects and a key and perform a popKey() action on the
 				// first object that contains the given key. If other objects in the list
 				// also have the key, they are ignored.
+
+				
 				function popFirstKey( object1, object2, objectN, key ) {
 
 					// Convert the arguments list into a true array so we can easily
@@ -688,9 +703,13 @@
 					var key = objects.pop();
 
 					var object = null;
+					
 
 					// Iterate over the arguments, looking for the first object that
 					// contains a reference to the given key.
+
+					var firstObject = true;
+
 					while ( object = objects.shift() ) {
 
 						if ( object.hasOwnProperty( key ) ) {
@@ -699,21 +718,29 @@
 
 						}
 
+						firstObject = false;
+
+					}
+
+						// I delete the key from the given object and return the value.
+					
+					function popKey( object, key ) {
+
+						var value = object[ key ];
+
+						// do not delte object properties, only params!
+						if(!firstObject) {
+							delete( object[ key ]);
+						}
+
+						return( value );
+
 					}
 
 				}
 
 
-				// I delete the key from the given object and return the value.
-				function popKey( object, key ) {
-
-					var value = object[ key ];
-
-					delete( object[ key ] );
-
-					return( value );
-
-				}
+				
 
 			};
 		})
