@@ -98,7 +98,7 @@
 
 					save({key, data} = {}){
 
-						if(!this.cache) return;
+						if(!this.cache) return data;
 
 						if(this.store && data) {
 							this.saveToStorage(key, data);
@@ -122,7 +122,6 @@
 					get({id, key} = {}) {
 
 						var data = this.getFromCache(key);
-
 						// if no data in cache, try in store
 						if(!data && this.store) {
 
@@ -135,7 +134,7 @@
 
 						if(id && data) {
 							id = parseInt(id);
-							data = this.getById(id, data);
+							return this.getById(id, data);
 						}
 
 						// if(promise) {
@@ -153,12 +152,20 @@
 							matrix[this.primId] = id;
 							return _.find(data, matrix);
 						}
+						// no collection? what todo?
+						else {
+
+							console.warn('getById: data is not an instanceof Array! returning the whole data instead', data);
+							// data is the data we are looking for?
+							return data;
+						}
 					}
 
 					// todo: should data be an object or array, or can it be a string too?
 					add({key, data} = {}) {
 
 						var presentData = Facility.prototype.get.call(this, {key: key});
+
 
 						if(presentData) {
 
@@ -168,6 +175,8 @@
 
 							presentData = presentData.concat(data); // concat because data could be an array too
 							_.uniq(presentData, this.primId); // sometimes the server response with a duplicate
+
+
 						}
 						else {
 							presentData = [];
@@ -266,8 +275,8 @@
 									_.assign(match, model);
 								}
 								else {
-									console.warn('update() CASE 3: no match found -> -> data added', model);
-									Facility.prototype.add.call(this, {key: key, data: model});
+									console.warn('update() CASE 3: no match found -> data added', model);
+									return Facility.prototype.add.call(this, {key: key, data: model});
 								}
 							});
 						}
@@ -322,7 +331,7 @@
 							}
 						}
 
-						if(keys.length === 0) {
+						else if(keys.length === 0) {
 
 							if(cache) {
 								this.cached = {};
@@ -476,7 +485,7 @@
 						this.requestTimes = {};
 					}
 
-					throwErr({throwErr = {}} = {}) {
+					throwErr({throwErr = {}, rejectIfError = true} = {}) {
 						var defaultArgs = {
 							timeout: 3000, // 3 sec
 							code: 404,
@@ -487,7 +496,11 @@
 						error.status = throwErr.code;
 						return $timeout(()=> {
 							if (this.errorHandler) {this.errorHandler(this.name, error);}
-							return $q.reject('Error ' + name);
+							if (rejectIfError) return $q.reject(error);
+							else {
+								error._isError = true; // indicate that the resolved response is an error
+								return $q.when(error);
+							}
 						}, throwErr.timeout);
 					}
 
@@ -496,6 +509,7 @@
 						params = {},
 						key, 
 						reload = false, 
+						rejectIfError = true,
 
 						} = {}) {
 
@@ -509,25 +523,32 @@
 						}
 
 						else {
+							var id = _.pick(params, 'id').id || id; // copy id because it gets deleted by url interpolation
 
 							var requestIdf = angular.toJson(url) + angular.toJson(params); // unqiue identifyer
 							var diff = timeDiff('now', this.requestTimes[requestIdf]);
 
 							var saveHandler = (resp) => {
-								super.save({data: resp, key: key});
-								return resp;
+								if(id) {
+									console.log('fetch(): update instead of save', id);
+									return this.getById(id, super.update({data: resp, key: key})); // save as array, but return as single 
+								}
+								else {
+									return super.save({data: resp, key: key});
+								}
+								// return super.save({data: resp, key: key});
 							};
 
 							if (!diff || diff > this.throttleTime) {
 								// new request
-								console.log('get() ', this.name);
+								console.log('fetch() ', this.name);
 								this.requestTimes[requestIdf] = new Date().getTime();
 								this.requests[requestIdf] = httpRequest('GET', url, params)
 
 									
 									.then((resp)=>{return this.parseResponse(resp);})
-									.then(saveHandler)
-									.catch((err)=>{return this.errorResponse(err);})
+									.then(saveHandler) // gets not called because of not defined anymore?
+									.catch((err)=>{return this.errorResponse(err, rejectIfError);})
 									;
 
 							} 
@@ -614,9 +635,13 @@
 						return resp;
 					}
 
-					errorResponse(err) {
+					errorResponse(err, rejectIfError) {
 						if (this.errorHandler) {this.errorHandler(this.name, err);}
-						return $q.reject(err);
+						if (rejectIfError) return $q.reject(err);
+						else {
+							err._isError = true; // indicate that the resolved response is an error
+							return $q.when(err);
+						}
 					}
 
 				}

@@ -326,7 +326,7 @@ describe('Stuffmanager', function() {
                 });
                 var params = {params: {id: 3}};
 
-                $httpBackend.expectGET('api/test/3').respond(200, {wrapper: {data: 'yolo'}});
+                $httpBackend.expectGET('api/test/3').respond(200, {wrapper: {data: 'yolo', id: 3}});
 
                 expect(instance.url).toEqual('api/test/:id');
 
@@ -361,9 +361,8 @@ describe('Stuffmanager', function() {
                 var instance = resourceManager.create('NameOfmsResource', {
                     url: 'api/test/:id'
                 });
-                var params = {params: {id: 3}};
 
-                $httpBackend.expectGET('api/test/3').respond(200, {data: 'yolo'});
+                $httpBackend.expectGET('api/test/3').respond(200, {data: 'yolo', id: 3});
                         
                 var handler = {
                     success: function(resp) {
@@ -379,7 +378,7 @@ describe('Stuffmanager', function() {
                 spyOn(instance, 'parseResponse').and.callThrough();
 
 
-                instance.fetch(params)
+                instance.fetch({params: {id: 3}})
                     .then(handler.success)
                     .catch(handler.error)
                     ;
@@ -405,7 +404,7 @@ describe('Stuffmanager', function() {
                 spyOn(handler2, 'error').and.callThrough();
                 instance.parseResponse.calls.reset();
 
-                    instance.fetch(params)
+                    instance.fetch({params: {id: 3}})
                     .then(handler2.success)
                     .catch(handler2.error)
                     ;
@@ -416,6 +415,88 @@ describe('Stuffmanager', function() {
                 expect(handler2.success).toHaveBeenCalled();
                 expect(handler2.error).not.toHaveBeenCalled();
               
+
+            }));
+
+            it('should catch http Errors', inject(function(resourceManager, $httpBackend) {
+
+                var instance = resourceManager.create('name', {
+                    url: 'api/test/:id',
+                    parse: 'wrapper'
+                });
+                var params = {params: {id: 3}};
+
+                $httpBackend.expectGET('api/test/3').respond(400, {wrapper: {data: 'yolo'}});
+
+                expect(instance.url).toEqual('api/test/:id');
+
+                var handler = {
+                    success: function(resp) {
+                        
+                    },
+                    error: function(err) {
+                        expect(err).toBeDefined();
+                    }
+                };
+
+                spyOn(handler, 'success').and.callThrough();
+                spyOn(handler, 'error').and.callThrough();
+
+                spyOn(instance, 'errorHandler').and.callThrough();
+
+
+                instance.fetch(params)
+                    .then(handler.success)
+                    .catch(handler.error)
+                    ;
+
+                $httpBackend.flush();
+
+                expect(handler.success).not.toHaveBeenCalled();
+                expect(handler.error).toHaveBeenCalled();
+
+                expect(instance.errorHandler).toHaveBeenCalled();
+
+            }));
+
+            it('should catch http Errors but dont reject the promise', inject(function(resourceManager, $httpBackend) {
+
+                var instance = resourceManager.create('name', {
+                    url: 'api/test/:id',
+                    parse: 'wrapper'
+                });
+                var params = {params: {id: 3}, rejectIfError: false};
+
+                $httpBackend.expectGET('api/test/3').respond(400, {wrapper: {data: 'yolo'}});
+
+                expect(instance.url).toEqual('api/test/:id');
+
+                var handler = {
+                    success: function(resp) {
+                        expect(resp).toBeDefined();
+                    },
+                    error: function(err) {
+                        
+                    }
+                };
+
+                spyOn(handler, 'success').and.callThrough();
+                spyOn(handler, 'error').and.callThrough();
+
+                spyOn(instance, 'errorHandler').and.callThrough();
+
+
+                instance.fetch(params)
+                    .then(handler.success)
+                    .catch(handler.error)
+                    ;
+
+                $httpBackend.flush();
+
+                expect(handler.success).toHaveBeenCalled();
+                expect(handler.error).not.toHaveBeenCalled();
+
+                expect(instance.errorHandler).toHaveBeenCalled();
 
             }));
 
