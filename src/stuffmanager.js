@@ -166,7 +166,6 @@
 
 						var presentData = Facility.prototype.get.call(this, {key: key});
 
-
 						if(presentData) {
 
 							if(!_.isArray(presentData)) {
@@ -360,6 +359,12 @@
 
 					}
 
+					static getInstanceByName(instanceName) {
+						var find = _.find(instances, {name: instanceName});
+						console.log('instanceName', instanceName, instances, find);
+						return find;
+					}
+
 					
 
 					static clear({domains = [], cache = true, storage = true} = {}) {
@@ -410,7 +415,8 @@
 					// 	return Facility;
 					// },
 					class: Facility,
-					clear: Facility.clear
+					clear: Facility.clear,
+					getInstanceByName: Facility.getInstanceByName
 				};
 			};
 			
@@ -485,23 +491,55 @@
 						this.requestTimes = {};
 					}
 
+					// rework... has to work with real instance data?
 					throwErr({throwErr = {}, rejectIfError = true} = {}) {
 						var defaultArgs = {
-							timeout: 3000, // 3 sec
+							timeout: 3000,
 							code: 404,
 						};
 						_.defaults(throwErr, defaultArgs);
 
 						var error = {};
 						error.status = throwErr.code;
+
+						// todo: maybe completly ignore any errorHandler for retry requests....
+						var request = {
+							instanceName: 'myAppideas', // need example instance
+							url: 'throw/:id',
+							params: {
+								id: 666
+							},
+							reload: true,
+							rejectIfError: false,
+							key: 'yolo'
+						};
+
 						return $timeout(()=> {
-							if (this.errorHandler) {this.errorHandler(this.name, error);}
-							if (rejectIfError) return $q.reject(error);
-							else {
-								error._isError = true; // indicate that the resolved response is an error
-								return $q.when(error);
-							}
+							return this.errorResponse(error, rejectIfError, request);
 						}, throwErr.timeout);
+					}
+
+					// reFetch(instanceNamesAry) {
+					// 	// todo: for each instanceName.... refetch
+					// 	// todo: get instanceByName
+					// 	_.forEach(instanceNamesAry, function(instanceName) {
+					// 		getInstanceByName(instanceName).fetch({reload: true}); // todo: parameter unbekannt...
+
+					// 		// todo: reload with requestIdf
+					// 	});
+					// }
+
+					static reFetch(requestObjAry) {
+						_.forEach(requestObjAry, (request)=> {
+							facilityManager.class.getInstanceByName(request.instanceName).fetch(request);
+							// request object should already have reload: true in it.
+						});
+					}
+
+					// before login!
+					static resetThrottle() {
+						this.requests = {}; 
+						this.requestTimes = {};
 					}
 
 					fetch({
@@ -526,6 +564,16 @@
 							var id = _.pick(params, 'id').id || id; // copy id because it gets deleted by url interpolation
 
 							var requestIdf = angular.toJson(url) + angular.toJson(params); // unqiue identifyer
+
+							var request = {
+								instanceName: this.name,
+								url: url,
+								params: angular.copy(params), // copy because some of it will get deleted by url interpolation
+								key: key,
+								reload: true,
+								rejectIfError: false
+							};
+
 							var diff = timeDiff('now', this.requestTimes[requestIdf]);
 
 							var saveHandler = (resp) => {
@@ -544,11 +592,10 @@
 								console.log('fetch() ', this.name);
 								this.requestTimes[requestIdf] = new Date().getTime();
 								this.requests[requestIdf] = httpRequest('GET', url, params)
-
-									
 									.then((resp)=>{return this.parseResponse(resp);})
-									.then(saveHandler) // gets not called because of not defined anymore?
-									.catch((err)=>{return this.errorResponse(err, rejectIfError);})
+									.then(saveHandler)
+									.catch((err)=>{return this.errorResponse(err, rejectIfError, request);
+									})
 									;
 
 							} 
@@ -569,6 +616,7 @@
 						params = {}, 
 						data, 
 						url = this.url, 
+						rejectIfError = true,
 						key
 						} = {}) {
 					
@@ -585,13 +633,14 @@
 						return httpRequest('POST', url, params, data)
 							.then((resp)=>{return this.parseResponse(resp);})
 							.then(addHandler)
-							.catch((err)=>{return this.errorResponse(err);});
+							.catch((err)=>{return this.errorResponse(err, rejectIfError);});
 					}
 
 					put({
 						params = {}, 
 						data, 
 						url = this.url, 
+						rejectIfError = true,
 						key
 						} = {}) {
 
@@ -603,14 +652,14 @@
 						return httpRequest('PUT', url, params, data)
 							.then((resp)=>{return this.parseResponse(resp);})
 							.then(updateHandler)
-							.catch((err)=>{return this.errorResponse(err);});
+							.catch((err)=>{return this.errorResponse(err, rejectIfError);});
 						
 
 
 					}
 
 					// delte has no parse response until now
-					delete({url = this.url, params, key, id} = {}) {
+					delete({url = this.url, rejectIfError = true, params, key, id} = {}) {
 
 						var id = _.pick(params, 'id').id || id; // copy id
 
@@ -621,7 +670,7 @@
 
 						return httpRequest('DELETE', url, params)
 							.then(removeHandler)
-							.catch((err)=>{return this.errorResponse(err);});
+							.catch((err)=>{return this.errorResponse(err, rejectIfError);});
 					}
 
 
@@ -635,8 +684,8 @@
 						return resp;
 					}
 
-					errorResponse(err, rejectIfError) {
-						if (this.errorHandler) {this.errorHandler(this.name, err);}
+					errorResponse(err, rejectIfError, request) {
+						if (this.errorHandler) {this.errorHandler(this.name, err, request);}
 						if (rejectIfError) return $q.reject(err);
 						else {
 							err._isError = true; // indicate that the resolved response is an error
@@ -653,6 +702,9 @@
 					},
 					class: Resource,
 					clear: facilityManager.class.clear,
+					getInstanceByName: facilityManager.class.getInstanceByName,
+					reFetch: Resource.reFetch,
+					resetThrottle: Resource.resetThrottle,
 					TRANSFORM: TRANSFORM,
 					ERROR_HANDLER: ERROR_HANDLER
 				}
