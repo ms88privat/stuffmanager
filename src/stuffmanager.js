@@ -147,6 +147,7 @@
 
 
 					getById(id, data) {
+						id = parseInt(id);
 						if (data instanceof Array) {
 							var matrix = {};
 							matrix[this.primId] = id;
@@ -179,7 +180,16 @@
 						}
 						else {
 							presentData = [];
-							presentData = presentData.concat(data);
+							// presentData = presentData.concat(data);
+							if(_.isArray(data)) {
+								_.forEach(data, function(model) {
+									presentData.push(model);
+								});
+							} else {
+								presentData.push(data);
+							}
+
+							console.log('presentDataXX:', this.name, presentData);
 						}
 
 						// save changes and return
@@ -556,7 +566,7 @@
 							
 						}
 
-						if (data) {
+						if (data ) { // && data.complete
 							return $q.when(data);
 						}
 
