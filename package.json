@@ -1,8 +1,8 @@
 {
   "name": "stuffmanager",
-  "version": "0.0.1",
+  "version": "0.1.2",
   "description": "manage your data stuff in a better and automatic way",
-  "main": "index.js",
+  "main": "dist/stuffmanager.min.js",
   "scripts": {
     "test": "gulp test"
   },
