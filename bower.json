@@ -1,12 +1,12 @@
 {
   "name": "stuffmanager",
-  "version": "0.0.2",
+  "version": "0.1.2",
   "homepage": "https://github.com/ms88privat/stuffmanager",
   "authors": [
     "marcelschulze <ms88.privat@gmail.com>"
   ],
   "description": "manage your data in a better and automatic way",
-  "main": "stuffmanager.min.js",
+  "main": "dist/stuffmanager.min.js",
   "keywords": [
     "babel",
     "es6",

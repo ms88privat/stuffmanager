@@ -377,9 +377,9 @@
 
 					
 
-					static clear({domains = [], cache = true, storage = true} = {}) {
+					static clear({domains = [], withoutDomains = [], cache = true, storage = true} = {}) {
 						// cache
-						if(domains.length === 0) {
+						if(domains.length === 0 && withoutDomains.length === 0) {
 							_.forEach(instances, (instance) => {
 								instance.clear({
 									cache: cache,
@@ -388,8 +388,25 @@
 							});
 						}
 
-						else {
+						else if (domains.length === 0 && withoutDomains.length > 0) {
+
 							_.forEach(instances, (instance) => {
+
+								// only clear when there is no withoutDomain match
+								if(_.intersection(withoutDomains, instance.domains).length <= 0) {
+									// no match with withoutDomains -> clear
+									instance.clear({
+										cache: cache,
+										storage: storage
+									});
+								}
+
+							});
+						}
+
+						else if (domains.length > 0 && withoutDomains.length === 0) {
+							_.forEach(instances, (instance) => {
+
 								// only clear if there is minimum one domain match
 								if(_.intersection(domains, instance.domains).length > 0) {
 									instance.clear({
@@ -397,6 +414,23 @@
 										storage: storage
 									});
 								}
+							});
+						}
+
+						else { // > 0 > 0
+							_.forEach(instances, (instance) => {
+								// only clear if there is minimum one domain match
+
+								if(_.intersection(withoutDomains, instance.domains).length <= 0) {
+									// you could clear this instance - no intersection withoutDomains
+									if(_.intersection(domains, instance.domains).length > 0) {
+										instance.clear({
+											cache: cache,
+											storage: storage
+										});
+									}
+								}
+								
 							});
 						}
 						
